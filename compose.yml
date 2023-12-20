@@ -1,8 +1,222 @@
 version: '3.5'
 
 services:
+  zookeeper-dc:
+    image: babibe2211/cp-zookeeper-tc:7.4.1
+    hostname: zookeeper-dc
+    container_name: zookeeper-dc
+    networks:
+      - n1
+    ports:
+      - "2181:2181"
+    volumes:
+      - ./config/zookeeper_jaas.conf:/etc/kafka/zookeeper_jaas.conf
+    environment:
+      ZOOKEEPER_SERVER_ID: 1
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_SERVERS: zookeeper-dc:2888:3888;zookeeper-dc2:2888:3888;zookeeper-dr:2888:3888
+      # Enable authentication Zookeeper using DigestLogin
+      KAFKA_OPTS: -Djava.security.auth.login.config=/etc/kafka/zookeeper_jaas.conf
+      ZOOKEEPER_AUTH_PROVIDER_1: org.apache.zookeeper.server.auth.SASLAuthenticationProvider
+      ZOOKEEPER_REQUIRE_CLIENT_AUTH_SCHEME: sasl
+      ZOOKEEPER_JAAS_LOGIN_RENEW: 3600000
+      ###########################################################################
+    cap_add:
+      - NET_ADMIN
+
+  zookeeper-dc2:
+    image: babibe2211/cp-zookeeper-tc:7.4.1
+    hostname: zookeeper-dc2
+    container_name: zookeeper-dc2
+    networks:
+      - n1
+    ports:
+      - "2182:2182"
+    volumes:
+      - ./config/zookeeper_jaas.conf:/etc/kafka/zookeeper_jaas.conf
+    environment:
+      ZOOKEEPER_SERVER_ID: 2
+      ZOOKEEPER_CLIENT_PORT: 2182
+      ZOOKEEPER_SERVERS: zookeeper-dc:2888:3888;zookeeper-dc2:2888:3888;zookeeper-dr:2888:3888
+      # Enable authentication Zookeeper using DigestLogin
+      KAFKA_OPTS: -Djava.security.auth.login.config=/etc/kafka/zookeeper_jaas.conf
+      ZOOKEEPER_AUTH_PROVIDER_1: org.apache.zookeeper.server.auth.SASLAuthenticationProvider
+      ZOOKEEPER_REQUIRE_CLIENT_AUTH_SCHEME: sasl
+      ZOOKEEPER_JAAS_LOGIN_RENEW: 3600000
+      ###########################################################################
+    depends_on:
+      - zookeeper-dc
+    cap_add:
+      - NET_ADMIN
+
+  zookeeper-dr:
+    image: babibe2211/cp-zookeeper-tc:7.4.1
+    hostname: zookeeper-dr
+    container_name: zookeeper-dr
+    networks:
+      - n1
+    ports:
+      - "2183:2183"
+    volumes:
+      - ./config/zookeeper_jaas.conf:/etc/kafka/zookeeper_jaas.conf    
+    environment:
+      ZOOKEEPER_SERVER_ID: 3
+      ZOOKEEPER_CLIENT_PORT: 2183
+      ZOOKEEPER_SERVERS: zookeeper-dc:2888:3888;zookeeper-dc2:2888:3888;zookeeper-dr:2888:3888
+      # Enable authentication Zookeeper using DigestLogin
+      KAFKA_OPTS: -Djava.security.auth.login.config=/etc/kafka/zookeeper_jaas.conf
+      ZOOKEEPER_AUTH_PROVIDER_1: org.apache.zookeeper.server.auth.SASLAuthenticationProvider
+      ZOOKEEPER_REQUIRE_CLIENT_AUTH_SCHEME: sasl
+      ZOOKEEPER_JAAS_LOGIN_RENEW: 3600000
+      ###########################################################################
+    depends_on:
+      - zookeeper-dc
+      - zookeeper-dc2
+    cap_add:
+      - NET_ADMIN
+
+  broker-dc:
+    image: babibe2211/cp-server-tc:7.4.1
+    hostname: broker-dc
+    container_name: broker-dc
+    networks:
+      - n1
+    ports:
+      - "9091:9091"
+      - "8091:8091"
+    volumes:
+      - ./config:/etc/kafka/demo
+    environment:
+      KAFKA_BROKER_ID: 101
+      KAFKA_BROKER_RACK: 'dc'
+      KAFKA_ADVERTISED_LISTENERS: LISTENER_DOCKER_INTERNAL://broker-dc:19091,LISTENER_DOCKER_EXTERNAL://10.2.130.78:9091
+      KAFKA_INTER_BROKER_LISTENER_NAME: LISTENER_DOCKER_INTERNAL
+      # Enable authentication Kafka using PlainLogin      
+      KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL: PLAIN
+      KAFKA_SASL_ENABLED_MECHANISMS: PLAIN  
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: LISTENER_DOCKER_INTERNAL:SASL_PLAINTEXT,LISTENER_DOCKER_EXTERNAL:SASL_PLAINTEXT
+      KAFKA_OPTS: "-Djava.security.auth.login.config=/etc/kafka/demo/kafka_jaas.conf"
+      ###########################################################################
+      KAFKA_REPLICA_SELECTOR_CLASS: org.apache.kafka.common.replica.RackAwareReplicaSelector
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper-dc:2181,zookeeper-dc2:2182,zookeeper-dr:2183'
+      KAFKA_ZOOKEEPER_SECURITY_ENABLED: True
+      KAFKA_CONFLUENT_LICENSE_TOPIC_REPLICATION_FACTOR: 2
+      KAFKA_METRIC_REPORTERS: io.confluent.metrics.reporter.ConfluentMetricsReporter
+      KAFKA_CONFLUENT_METRICS_REPORTER_BOOTSTRAP_SERVERS: broker-ccc:19098
+      # Authenticate with Metrics server
+      KAFKA_CONFLUENT_METRICS_REPORTER_SASL_MECHANISM: PLAIN
+      KAFKA_CONFLUENT_METRICS_REPORTER_SECURITY_PROTOCOL: SASL_PLAINTEXT
+      KAFKA_CONFLUENT_METRICS_REPORTER_SASL_JAAS_CONFIG: org.apache.kafka.common.security.plain.PlainLoginModule required \
+                                                          username="admin" \
+                                                          password="Abc@12314455";          
+      ###########################################################################                                                          
+      # KAFKA_CONFLUENT_MONITORING_INTERCEPTER_BOOTSTRAP_SERVERS: broker-ccc:19098
+      KAFKA_JMX_PORT: 8091
+      KAFKA_CONFLUENT_LOG_PLACEMENT_CONSTRAINTS: '{"version": 1,"replicas": [{"count": 1, "constraints": {"rack": "dc2"}}], "observers": [{"count": 1, "constraints": {"rack": "dc"}}]}'
+      KAFKA_OFFSETS_TOPIC_NUM_PARTITIONS: 4
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 2
+    depends_on:
+      - zookeeper-dc
+      - zookeeper-dc2
+      - zookeeper-dr
+
+  broker-dc2:
+    image: babibe2211/cp-server-tc:7.4.1
+    hostname: broker-dc2
+    container_name: broker-dc2
+    networks:
+      - n1
+    ports:
+      - "9092:9092"
+      - "8092:8092"
+    volumes:
+      - ./config:/etc/kafka/demo      
+    environment:
+      KAFKA_BROKER_ID: 201
+      KAFKA_BROKER_RACK: 'dc2'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: LISTENER_DOCKER_INTERNAL:SASL_PLAINTEXT,LISTENER_DOCKER_EXTERNAL:SASL_PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: LISTENER_DOCKER_INTERNAL
+      # Enable authentication Kafka using PlainLogin      
+      KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL: PLAIN
+      KAFKA_SASL_ENABLED_MECHANISMS: PLAIN     
+      KAFKA_ADVERTISED_LISTENERS: LISTENER_DOCKER_INTERNAL://broker-dc2:19092,LISTENER_DOCKER_EXTERNAL://10.2.130.78:9092
+      KAFKA_OPTS: "-Djava.security.auth.login.config=/etc/kafka/demo/kafka_jaas.conf"
+      ###########################################################################
+      KAFKA_REPLICA_SELECTOR_CLASS: org.apache.kafka.common.replica.RackAwareReplicaSelector
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper-dc:2181,zookeeper-dc2:2182,zookeeper-dr:2183'
+      KAFKA_ZOOKEEPER_SECURITY_ENABLED: True
+      KAFKA_CONFLUENT_LICENSE_TOPIC_REPLICATION_FACTOR: 2
+      KAFKA_METRIC_REPORTERS: io.confluent.metrics.reporter.ConfluentMetricsReporter
+      KAFKA_CONFLUENT_METRICS_REPORTER_BOOTSTRAP_SERVERS: broker-ccc:19098
+      # Authenticate with Metrics server
+      KAFKA_CONFLUENT_METRICS_REPORTER_SASL_MECHANISM: PLAIN
+      KAFKA_CONFLUENT_METRICS_REPORTER_SECURITY_PROTOCOL: SASL_PLAINTEXT
+      KAFKA_CONFLUENT_METRICS_REPORTER_SASL_JAAS_CONFIG: org.apache.kafka.common.security.plain.PlainLoginModule required \
+                                                          username="admin" \
+                                                          password="Abc@12314455";          
+      ###########################################################################                                                          
+      # KAFKA_CONFLUENT_MONITORING_INTERCEPTER_BOOTSTRAP_SERVERS: broker-ccc:19098
+      KAFKA_JMX_PORT: 8092
+      KAFKA_CONFLUENT_LOG_PLACEMENT_CONSTRAINTS: '{"version": 1,"replicas": [{"count": 1, "constraints": {"rack": "dc2"}}], "observers": [{"count": 1, "constraints": {"rack": "dc"}}]}'
+      KAFKA_OFFSETS_TOPIC_NUM_PARTITIONS: 4
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 2
+      CONFLUENT_METRICS_ENABLE: 'true'
+    depends_on:
+      - zookeeper-dc
+      - zookeeper-dc2
+      - zookeeper-dr
+    cap_add:
+      - NET_ADMIN
+
+  broker-dr:
+    image: babibe2211/cp-server-tc:7.4.1
+    hostname: broker-dr
+    container_name: broker-dr
+    networks:
+      - n1
+    ports:
+      - "9093:9093"
+      - "8093:8093"
+    volumes:
+      - ./config:/etc/kafka/demo
+    environment:
+      KAFKA_BROKER_ID: 301
+      KAFKA_BROKER_RACK: 'east'
+      # Enable authentication Kafka using PlainLogin
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: LISTENER_DOCKER_INTERNAL:SASL_PLAINTEXT,LISTENER_DOCKER_EXTERNAL:SASL_PLAINTEXT
+      KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL: PLAIN
+      KAFKA_SASL_ENABLED_MECHANISMS: PLAIN     
+      KAFKA_OPTS: "-Djava.security.auth.login.config=/etc/kafka/demo/kafka_jaas.conf"
+      ###########################################################################
+      KAFKA_INTER_BROKER_LISTENER_NAME: LISTENER_DOCKER_INTERNAL
+      KAFKA_ADVERTISED_LISTENERS: LISTENER_DOCKER_INTERNAL://broker-dr:19093,LISTENER_DOCKER_EXTERNAL://10.2.130.78:9093
+      KAFKA_REPLICA_SELECTOR_CLASS: org.apache.kafka.common.replica.RackAwareReplicaSelector
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper-dc:2181,zookeeper-dc2:2182,zookeeper-dr:2183'
+      KAFKA_ZOOKEEPER_SECURITY_ENABLED: True
+      KAFKA_CONFLUENT_LICENSE_TOPIC_REPLICATION_FACTOR: 2
+      KAFKA_METRIC_REPORTERS: io.confluent.metrics.reporter.ConfluentMetricsReporter
+      KAFKA_CONFLUENT_METRICS_REPORTER_BOOTSTRAP_SERVERS: broker-ccc:19098
+      # Authenticate with Metrics server
+      KAFKA_CONFLUENT_METRICS_REPORTER_SASL_MECHANISM: PLAIN
+      KAFKA_CONFLUENT_METRICS_REPORTER_SECURITY_PROTOCOL: SASL_PLAINTEXT
+      KAFKA_CONFLUENT_METRICS_REPORTER_SASL_JAAS_CONFIG: org.apache.kafka.common.security.plain.PlainLoginModule required \
+                                                          username="admin" \
+                                                          password="Abc@12314455";      
+      ###########################################################################                                                          
+      # KAFKA_CONFLUENT_MONITORING_INTERCEPTER_BOOTSTRAP_SERVERS: broker-ccc:19098
+      KAFKA_JMX_PORT: 8093
+      KAFKA_CONFLUENT_LOG_PLACEMENT_CONSTRAINTS: '{"version": 1,"replicas": [{"count": 1, "constraints": {"rack": "dc2"}}], "observers": [{"count": 1, "constraints": {"rack": "dc"}}]}'
+      KAFKA_OFFSETS_TOPIC_NUM_PARTITIONS: 1
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      CONFLUENT_METRICS_ENABLE: 'true'
+    depends_on:
+      - zookeeper-dc
+      - zookeeper-dc2
+      - zookeeper-dr
+    cap_add:
+      - NET_ADMIN
   zookeeper-ccc:
-    image: localbuild/cp-zookeeper-tc:7.4.1
+    image: babibe2211/cp-zookeeper-tc:7.4.1
     hostname: zookeeper-ccc
     container_name: zookeeper-ccc
     networks:
@@ -15,13 +229,15 @@ services:
       ZOOKEEPER_SERVER_ID: 4
       ZOOKEEPER_CLIENT_PORT: 2188
       ZOOKEEPER_SERVERS: zookeeper-ccc:2888:3888
+      # Enable authentication Zookeeper using DigestLogin
       ZOOKEEPER_AUTH_PROVIDER_1: org.apache.zookeeper.server.auth.SASLAuthenticationProvider
       ZOOKEEPER_REQUIRE_CLIENT_AUTH_SCHEME: sasl
       ZOOKEEPER_JAAS_LOGIN_RENEW: 3600000
       KAFKA_OPTS: -Djava.security.auth.login.config=/etc/kafka/zookeeper_jaas.conf      
+      ###########################################################################
 
   broker-ccc:
-    image: localbuild/cp-server-tc:7.4.1
+    image: babibe2211/cp-server-tc:7.4.1
     hostname: broker-ccc
     container_name: broker-ccc
     networks:
@@ -35,20 +251,25 @@ services:
       KAFKA_BROKER_ID: 8
       KAFKA_BROKER_RACK: 'metrics'
       KAFKA_LISTENERS: LISTENER_DOCKER_INTERNAL://broker-ccc:19098,LISTENER_DOCKER_EXTERNAL://${DOCKER_HOST_IP}:9098
+      # Enable authentication Kafka using PlainLogin
+      KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL: PLAIN
+      KAFKA_SASL_ENABLED_MECHANISMS: PLAIN      
+      KAFKA_OPTS: "-Djava.security.auth.login.config=/etc/kafka/demo/kafka_jaas.conf"      
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: LISTENER_DOCKER_INTERNAL:SASL_PLAINTEXT,LISTENER_DOCKER_EXTERNAL:SASL_PLAINTEXT
+      ###########################################################################
       KAFKA_INTER_BROKER_LISTENER_NAME: LISTENER_DOCKER_INTERNAL
       KAFKA_ADVERTISED_LISTENERS: LISTENER_DOCKER_INTERNAL://broker-ccc:19098,LISTENER_DOCKER_EXTERNAL://${DOCKER_HOST_IP}:9098
       KAFKA_ZOOKEEPER_CONNECT: 'zookeeper-ccc:2188'
       KAFKA_METRIC_REPORTERS: io.confluent.metrics.reporter.ConfluentMetricsReporter
       KAFKA_CONFLUENT_METRICS_REPORTER_BOOTSTRAP_SERVERS: broker-ccc:19098
+      # Authenticate with Metrics server
       KAFKA_CONFLUENT_METRICS_REPORTER_SASL_MECHANISM: PLAIN
       KAFKA_CONFLUENT_METRICS_REPORTER_SECURITY_PROTOCOL: SASL_PLAINTEXT
       KAFKA_CONFLUENT_METRICS_REPORTER_SASL_JAAS_CONFIG: org.apache.kafka.common.security.plain.PlainLoginModule required \
                                                           username="admin" \
                                                           password="Abc@12314455";
-      KAFKA_OPTS: "-Djava.security.auth.login.config=/etc/kafka/demo/kafka_jaas.conf"
-      KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL: PLAIN
-      KAFKA_SASL_ENABLED_MECHANISMS: PLAIN                                                                     
+      ###########################################################################
+                                                             
       KAFKA_JMX_PORT: 8098
       KAFKA_OFFSETS_TOPIC_NUM_PARTITIONS: 1
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
@@ -75,20 +296,40 @@ services:
       CONTROL_CENTER_REPLICATION_FACTOR: 1
       CONTROL_CENTER_INTERNAL_TOPICS_PARTITIONS: 1
       CONTROL_CENTER_MONITORING_INTERCEPTOR_TOPIC_PARTITIONS: 1
-      CONTROL_CENTER_KAFKA_METRICS_BOOTSTRAP_SERVERS: broker-ccc:19098
       CONTROL_CENTER_CONFLUENT_METRICS_TOPIC_REPLICATION: 1
-      
+      # Create MRC and METRICS Cluster
+      CONTROL_CENTER_KAFKA_METRICS_BOOTSTRAP_SERVERS: broker-ccc:19098
+      CONTROL_CENTER_KAFKA_MRC_BOOTSTRAP_SERVERS: broker-dc:19091,broker-dc2:19092,broker-dr:19093
+      ###########################################################################
+      # Authenticate METRICS Cluster - SASL_PLAINTEXT
+      CONTROL_CENTER_KAFKA_METRICS_SECURITY_PROTOCOL: SASL_PLAINTEXT
+      CONTROL_CENTER_KAFKA_METRICS_SASL_MECHANISM: PLAIN
+      CONTROL_CENTER_KAFKA_METRICS_SASL_JAAS_CONFIG: org.apache.kafka.common.security.plain.PlainLoginModule required \
+                                                          username="admin" \
+                                                          password="Abc@12314455";
+      ###########################################################################                                                          
+      # Authenticate MRC Cluster - SASL_PLAINTEXT
+      CONTROL_CENTER_KAFKA_MRC_SECURITY_PROTOCOL: SASL_PLAINTEXT
+      CONTROL_CENTER_KAFKA_MRC_SASL_MECHANISM: PLAIN
+      CONTROL_CENTER_KAFKA_MRC_SASL_JAAS_CONFIG: org.apache.kafka.common.security.plain.PlainLoginModule required \
+                                                          username="admin" \
+                                                          password="Abc@12314455";                                                          
+      ###########################################################################                                                                                                  
+      # Authenticate Kafka Streams - SASL_PLAINTEXT
       CONTROL_CENTER_STREAMS_SASL_MECHANISM: PLAIN
       CONTROL_CENTER_STREAMS_SECURITY_PROTOCOL: SASL_PLAINTEXT
       CONTROL_CENTER_STREAMS_SASL_JAAS_CONFIG: org.apache.kafka.common.security.plain.PlainLoginModule required \
                                                           username="admin" \
                                                           password="Abc@12314455";
+      ###########################################################################     
+      # Configure HTTP Basic Authentication with Control Center
       CONTROL_CENTER_REST_AUTHENTICATION_REALM: c3
       CONTROL_CENTER_REST_AUTHENTICATION_METHOD: BASIC
       CONTROL_CENTER_REST_AUTHENTICATION_ROLES: administrator,operator
       CONTROL_CENTER_AUTH_RESTRICTED_ROLES: operator
       CONTROL_CENTER_AUTH_SESSION_EXPIRATION_MS: 600000
       CONTROL_CENTER_OPTS: "-Djava.security.auth.login.config=/etc/controlcenter/config/propertyfile.jaas"
+      ###########################################################################     
       PORT: 9021
 
 networks:
